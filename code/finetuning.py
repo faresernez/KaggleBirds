@@ -86,7 +86,8 @@ class Finetuner():
             torch.save(self.model.state_dict(), self.savingPath + 'epoch_' + str(epoch))
             self.test()
 
-classes = ['ashpri1','barfly1','gloibi']
+# classes = ['ashpri1','barfly1','gloibi']
+classes = ['houspa','grewar3','commyn']
 tensorShape = (128,)
 
 dataLoader  = ClassificationDataLoader(batchSize=48,
