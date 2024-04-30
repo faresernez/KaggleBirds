@@ -19,8 +19,8 @@ import copy
 from torch.ao.quantization import get_default_qconfig, get_default_qconfig_mapping
 from torch.ao.quantization.quantize_fx import convert_fx, prepare_fx
 from torchvision.models import resnet50
-from calibration2 import calibratev3
-from calibration import calibratev2
+from code2023.calibration2 import calibratev3
+from code2023.calibration import calibratev2
 import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning) 
 

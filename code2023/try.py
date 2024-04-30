@@ -18,7 +18,7 @@ import shutil
 import random
 import torch.nn as nn
 from torch import optim
-from calibration import calibrate
+from code2023.calibration import calibrate
 
 
 ### WAV2VEC MODEL ###

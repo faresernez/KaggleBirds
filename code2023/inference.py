@@ -1,26 +1,24 @@
-import time
-start = time.time()
-
 import pandas as pd
 import os
 from pathlib import Path
 import torchaudio
 # import h5py
 import torch
-# torch.backends.cudnn.benchmark = True
+torch.backends.cudnn.benchmark = True
 import pandas as pd
 import os
+import time
 import numpy as np
 from pathlib import Path
 import torchaudio
 # import h5py
 import torch
-# torch.backends.cudnn.benchmark = True
+torch.backends.cudnn.benchmark = True
 import shutil
 import random
 import torch.nn as nn
 from torch import optim
-from calibration import calibrate
+from code2023.calibration import calibrate
 
 softMax = nn.Softmax(dim=1)
 
@@ -46,8 +44,8 @@ class LSTM(nn.Module):
         
     def forward(self, x, batch_size , hidden=None):
         if hidden==None:
-            self.hidden = (torch.zeros(1,batch_size,self.hidden_size).to('cpu'),
-                           torch.zeros(1,batch_size,self.hidden_size).to('cpu'))
+            self.hidden = (torch.zeros(1,batch_size,self.hidden_size).to('cuda:0'),
+                           torch.zeros(1,batch_size,self.hidden_size).to('cuda:0'))
         else:
             self.hidden = hidden
             
@@ -175,7 +173,7 @@ if not processing_done:
     del feature_extractor
     del tokenizer
 
-    model = Wav2Vec2Model.from_pretrained(model_checkpoint).to('cpu')
+    model = Wav2Vec2Model.from_pretrained(model_checkpoint).to('cuda:0')
 
     def wav2vec_processing():
         path = 'C:/Users/fares/OneDrive/Bureau/kaggleBirds/data/infer/subtracks64000/'
@@ -199,9 +197,9 @@ if not processing_done:
         # print(model.device)
 
         for k in range(n_loops):
-            t = torch.load(path + l[0 + batch_size*k], map_location='cpu')
+            t = torch.load(path + l[0 + batch_size*k], map_location='cuda:0')
             for i in range(batch_size - 1):
-                x = torch.load(path + l[i + 1 + batch_size*k], map_location='cpu')
+                x = torch.load(path + l[i + 1 + batch_size*k], map_location='cuda:0')
                 t = torch.cat((t,x),dim=0)
             # print('tensor device')
             # print(t.device)
@@ -212,7 +210,7 @@ if not processing_done:
 
             # start = time.time()
             with torch.no_grad():
-                input_values = processor(t, return_tensors="pt",sampling_rate = 16000).input_values.to('cpu')  # Batch size 1
+                input_values = processor(t, return_tensors="pt",sampling_rate = 16000).input_values.to('cuda:0')  # Batch size 1
                 # print(input_values.shape)
                 # print('input values')
                 # print(input_values.device)
@@ -225,14 +223,14 @@ if not processing_done:
                 torch.save(hidden_states[t], saving_path + l[t + batch_size*k])
         if reste != 0:
             done = batch_size * n_loops
-            t = torch.load(path + l[done], map_location='cpu')
+            t = torch.load(path + l[done], map_location='cuda:0')
             for i in range(reste - 1):
-                x = torch.load(path + l[i + 1 + done], map_location='cpu')
+                x = torch.load(path + l[i + 1 + done], map_location='cuda:0')
                 t = torch.cat((t,x),dim=0)
             # print(t.shape)
 
             with torch.no_grad():
-                input_values = processor(t, return_tensors="pt",sampling_rate = 16000).input_values.to('cpu')  # Batch size 1
+                input_values = processor(t, return_tensors="pt",sampling_rate = 16000).input_values.to('cuda:0')  # Batch size 1
                 # print(input_values.shape)
 
                 # print('ok')
@@ -385,7 +383,6 @@ reste = nelem % batch_size
 
 for quelbatch in range(2):
     for n_list in range(22):
-        start1 = time.time()
         print(quelbatch, '  ', n_list)
         model_path = 'C:/Users/fares/OneDrive/Bureau/kaggleBirds/models/'
         if quelbatch == 0:
@@ -395,22 +392,21 @@ for quelbatch in range(2):
             
         model_path += str(n_list)
 
-        model = LSTM(input_size=768, hidden_size=256, output_size=12)
+        model = LSTM(input_size=768, hidden_size=256, output_size=12).to('cuda:0')
 #         model = LSTM(input_size=768, hidden_size=256, output_size=12).cuda()
         model.load_state_dict(torch.load(model_path))
         model.eval()
 #         model.cuda()
-        # print(model.device)
 
         with torch.no_grad():
             for j in range(n_loops):
-                t = torch.load(path_test + str(j*batch_size) + '.pt' , map_location='cpu').unsqueeze(dim=0)
+                t = torch.load(path_test + str(j*batch_size) + '.pt' , map_location='cuda:0').unsqueeze(dim=0)
 #                 t = torch.load(path_test + str(j*batch_size) + '.pt').unsqueeze(dim=0).cuda()
-                # y = torch.ones(1,device='cpu',dtype=torch.long)*pathToSpecies(l_test[j*batch_size],species_dict)
+                # y = torch.ones(1,device='cuda:0',dtype=torch.long)*pathToSpecies(l_test[j*batch_size],species_dict)
                 for i in range(batch_size - 1):
-                        x = torch.load(path_test + str(j*batch_size + i + 1) + '.pt' , map_location='cpu').unsqueeze(dim=0)
+                        x = torch.load(path_test + str(j*batch_size + i + 1) + '.pt' , map_location='cuda:0').unsqueeze(dim=0)
 #                         x = torch.load(path_test + str(j*batch_size + i + 1) + '.pt').unsqueeze(dim=0).cuda()
-                        # z = torch.ones(1,device='cpu',dtype=torch.long)*pathToSpecies(l_test[j*batch_size + i + 1],species_dict)
+                        # z = torch.ones(1,device='cuda:0',dtype=torch.long)*pathToSpecies(l_test[j*batch_size + i + 1],species_dict)
                         t = torch.cat((t,x),dim=0)
                         # print('b')
                         # print(t.shape)
@@ -423,22 +419,20 @@ for quelbatch in range(2):
 #                 print(y_hat.device)
                 if j == 0:
                     ypred_test = softMax(y_hat)
-                    print(ypred_test.device)
                     # yt_test = y
                 else:
                     ypred_test = torch.cat((ypred_test,softMax(y_hat)),dim=0)
-                    print(ypred_test.device)
                     # yt_test = torch.cat((yt_test,y),dim=0)
             if reste != 0:
                 done = batch_size * n_loops
-                t = torch.load(path_test + str(done) + '.pt' , map_location='cpu').unsqueeze(dim=0)
+                t = torch.load(path_test + str(done) + '.pt' , map_location='cuda:0').unsqueeze(dim=0)
 #                 t = torch.load(path_test + str(done) + '.pt').unsqueeze(dim=0).cuda()
-                # y = torch.as_tensor(pathToSpecies(l_train[done],species_dict)).to('cpu')
-                # y = torch.ones(1,device='cpu',dtype=torch.long)*pathToSpecies(l_test[done],species_dict)
+                # y = torch.as_tensor(pathToSpecies(l_train[done],species_dict)).to('cuda:0')
+                # y = torch.ones(1,device='cuda:0',dtype=torch.long)*pathToSpecies(l_test[done],species_dict)
                 for i in range(reste - 1):
-                    x = torch.load(path_test + str(done + i + 1) + '.pt' , map_location='cpu').unsqueeze(dim=0)
+                    x = torch.load(path_test + str(done + i + 1) + '.pt' , map_location='cuda:0').unsqueeze(dim=0)
 #                     x = torch.load(path_test + str(done + i + 1) + '.pt' ).unsqueeze(dim=0).cuda()
-                    # z = torch.ones(1,device='cpu',dtype=torch.long)*pathToSpecies(l_test[done + i + 1],species_dict)
+                    # z = torch.ones(1,device='cuda:0',dtype=torch.long)*pathToSpecies(l_test[done + i + 1],species_dict)
                     t = torch.cat((t,x),dim=0)
                     # y = torch.cat((y,z),dim=0)
 #                 print('b')
@@ -447,7 +441,6 @@ for quelbatch in range(2):
                 y_hat, _ = model(t, reste, None)
                 
                 ypred_test = torch.cat((ypred_test,softMax(y_hat)),dim=0)
-                print(ypred_test.device)
                 # yt_test = torch.cat((yt_test,y),dim=0).cpu().numpy()
                 ypred_test.cpu().numpy()
         # print(ypred_test.shape)
@@ -478,8 +471,6 @@ for quelbatch in range(2):
                 else:
                     predictions[quelbatch][training_list[classe]].append(0.)
         # print(predictions[quelbatch])
-        end1 = time.time()
-        print(end1 - start1)
 
 final_prediction = np.zeros(264)
 
@@ -540,7 +531,7 @@ def newrow(i):
 
 sample_sub = pd.read_csv("C:/Users/fares/OneDrive/Bureau/kaggleBirds/data/sample_submission.csv")
 sample_sub
-for i in range(120):
+for i in range(119):
     if i < 3:
         if prediction_dic[i] != []:
             for species in prediction_dic[i]:
@@ -557,10 +548,8 @@ for i in range(120):
     # print(sample_sub[i])
         # sample_sub = pd.concat([sample_sub, pd.DataFrame([d])], ignore_index=True)
 # print(sample_sub)
-sample_sub.to_csv('C:/Users/fares/OneDrive/Bureau/kaggleBirds/data/results.csv',index=False)
+sample_sub.to_csv('C:/Users/fares/OneDrive/Bureau/kaggleBirds/data/results.csv')
 
-end = time.time()
-print('finished in ',end - start)
 
 
 
@@ -593,17 +582,17 @@ print('finished in ',end - start)
 # # for quelbatch in range(2):
 # #     for n_list in range(22):
 
-# model = LSTM(input_size=768, hidden_size=256, output_size=12).to('cpu')
+# model = LSTM(input_size=768, hidden_size=256, output_size=12).to('cuda:0')
 # model.load_state_dict(torch.load(r'C:\Users\fares\OneDrive\Bureau\kaggleBirds\models\batch1\nlist_0'))
 # model.eval()
 
 # with torch.no_grad():
 #     for j in range(n_loops):
-#         t = torch.load(path_test + l_test[j*batch_size], map_location='cpu').unsqueeze(dim=0)
-#         # y = torch.ones(1,device='cpu',dtype=torch.long)*pathToSpecies(l_test[j*batch_size],species_dict)
+#         t = torch.load(path_test + l_test[j*batch_size], map_location='cuda:0').unsqueeze(dim=0)
+#         # y = torch.ones(1,device='cuda:0',dtype=torch.long)*pathToSpecies(l_test[j*batch_size],species_dict)
 #         for i in range(batch_size - 1):
-#                 x = torch.load(path_test + l_test[j*batch_size + i + 1], map_location='cpu').unsqueeze(dim=0)
-#                 # z = torch.ones(1,device='cpu',dtype=torch.long)*pathToSpecies(l_test[j*batch_size + i + 1],species_dict)
+#                 x = torch.load(path_test + l_test[j*batch_size + i + 1], map_location='cuda:0').unsqueeze(dim=0)
+#                 # z = torch.ones(1,device='cuda:0',dtype=torch.long)*pathToSpecies(l_test[j*batch_size + i + 1],species_dict)
 #                 t = torch.cat((t,x),dim=0)
 #                 # print('b')
 #                 # print(t.shape)
@@ -617,12 +606,12 @@ print('finished in ',end - start)
 #             # yt_test = torch.cat((yt_test,y),dim=0)
 #     if reste != 0:
 #         done = batch_size * n_loops
-#         t = torch.load(path_test + l_test[done], map_location='cpu').unsqueeze(dim=0)
-#         # y = torch.as_tensor(pathToSpecies(l_train[done],species_dict)).to('cpu')
-#         # y = torch.ones(1,device='cpu',dtype=torch.long)*pathToSpecies(l_test[done],species_dict)
+#         t = torch.load(path_test + l_test[done], map_location='cuda:0').unsqueeze(dim=0)
+#         # y = torch.as_tensor(pathToSpecies(l_train[done],species_dict)).to('cuda:0')
+#         # y = torch.ones(1,device='cuda:0',dtype=torch.long)*pathToSpecies(l_test[done],species_dict)
 #         for i in range(reste - 1):
-#             x = torch.load(path_test + l_test[done + i + 1], map_location='cpu').unsqueeze(dim=0)
-#             # z = torch.ones(1,device='cpu',dtype=torch.long)*pathToSpecies(l_test[done + i + 1],species_dict)
+#             x = torch.load(path_test + l_test[done + i + 1], map_location='cuda:0').unsqueeze(dim=0)
+#             # z = torch.ones(1,device='cuda:0',dtype=torch.long)*pathToSpecies(l_test[done + i + 1],species_dict)
 #             t = torch.cat((t,x),dim=0)
 #             # y = torch.cat((y,z),dim=0)
 #         y_hat, _ = model(t, reste, None)
