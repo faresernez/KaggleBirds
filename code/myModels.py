@@ -66,11 +66,10 @@ class Classifier(nn.Module):
 
 class ClassifierForULite(nn.Module):
 
-    def __init__(self,autoEncoder,inputSize,nClasses):
+    def __init__(self,autoEncoder,nClasses):
 
         super(ClassifierForULite,self).__init__()
         self.nClasses = nClasses
-        self.inputSize = inputSize
         
         self.autoEncoder = autoEncoder
 

@@ -1,124 +1,80 @@
-import time
-import pandas as pd
-import glob
+import shutil
 import os
-import torch
-import pandas as pd
-import os
+import librosa
 import numpy as np
 from pathlib import Path
-import torchaudio
-import torch
-import shutil
 import random
-import torch.nn as nn
-from torch import optim
-import librosa
-torch.backends.cudnn.benchmark = True
-import copy
-from torch.ao.quantization import get_default_qconfig, get_default_qconfig_mapping
-from torch.ao.quantization.quantize_fx import convert_fx, prepare_fx
-from torchvision.models import resnet50
-# from calibration2 import calibratev3
-# from calibration import calibratev2
-import warnings
-warnings.filterwarnings("ignore", category=DeprecationWarning) 
-import matplotlib.pyplot as plt
+import torch
+
 
 def audio_to_chunks(audio_file,steps_per_subtrack = 160000, sr=32000):
     chunks = []
     data, samplerate = librosa.load(audio_file, sr=sr)
-    # print(samplerate)
-    # print(type(data))
-    # print(data.shape)
     track_length = data.shape[0]
-    for i in range(track_length // steps_per_subtrack):
+    nChunks = track_length // steps_per_subtrack
+    if (nChunks == 0): #if an audio is shorter than steps_per_subtrack, we duplicate it
+        while (data.shape[0] < steps_per_subtrack):
+            data = np.tile(data,2)
+        nChunks = 1
+    for i in range(nChunks):
         chunks.append(data[i*steps_per_subtrack:(i+1)*steps_per_subtrack])
-    # print(len(chunks))
+    chunks.append(data[-steps_per_subtrack:]) #adding the last steps_per_subtrack of the audio to not miss anything
     return chunks , samplerate
 
-def chunk_to_spectrum(chunk,samplerate,n_mels=224, hop_length=512, fmax=16000): # S.shape = (X,224,313)
-    # S = []
-    # for chunk in chunks:
+def chunk_to_spectrum(chunk,samplerate,n_mels=224, hop_length=716, fmax=16000): # S.shape = (X,224,313)
     S = librosa.feature.melspectrogram(y=chunk, sr=samplerate, n_mels=n_mels, hop_length=hop_length, fmax=fmax)
+    S = librosa.util.normalize(S)
     # mfccs = librosa.feature.mfcc(S=librosa.power_to_db(S))
-    # print('shape of mfccs : ', S.shape) #(224,313)
     return S
 
-class CustomDataLoader():
+def trainTestCalib(percentages = [0.8,0.2,0.]):
+        r = random.random()
+        if (percentages[0] == 1):
+            return 'train/'
+        elif (percentages[2] == 0 and r > percentages[1]):
+            return 'train/'
+        elif (percentages[2] == 0):
+            return 'test/'
+        elif (r < percentages[1]):
+            return 1
+        elif (r > 1 - percentages[2]):
+            return 'calib/'
+        else:
+            return 'train/'
 
-    def __init__(self,batchSize,dataPath):
-        self.batchSize = batchSize
-        self.dataPath = dataPath
-        self.filesMap = {}
-        for i,path in enumerate(Path(dataPath).glob('*')):
-            self.filesMap[i] = path
-        self.nFiles = i+1
-        self.index = range(self.nFiles)
-        self.posResumeInIndex = 0
-        self.posResumeInFile = 0
+def extract(dataProcessor,ratioTrainTestCalib,dataPath,destination,classes):
+        folders = ['C:/Users/fares/OneDrive/Bureau/kaggleBirds/data/Birdclef2024/finetuning/train/',
+                   'C:/Users/fares/OneDrive/Bureau/kaggleBirds/data/Birdclef2024/finetuning/test/',
+                   'C:/Users/fares/OneDrive/Bureau/kaggleBirds/data/Birdclef2024/finetuning/calib/']
+        for folder in folders:
+            shutil.rmtree(folder)
+            os.mkdir(folder)
 
-    def startEpoch(self):
-        random.shuffle(self.index)
-        self.posResumeInIndex = 0
-        self.posResumeInFile = 0
+        BirdClassMap = {}
+        filesMap = {}
+        classMap = {}
+        ind = 0 
+        indDict = {'train/':[],'test/':[],'calib/':[]}
+        for i,c in enumerate(classes):
+            stri = str(i)
+            BirdClassMap[c] = i
+            classPath = dataPath + c + '/'
+            for path in Path(classPath).glob('*'):
+                chunks = dataProcessor.loadAudio(path)
+                for chunk in chunks:
+                    folder = trainTestCalib(ratioTrainTestCalib)
+                    tensorPath = destination + folder + str(ind) + '_' + stri + '.pt'
+                    torch.save(torch.from_numpy(dataProcessor.processChunk(chunk)),tensorPath)
+                    indDict[folder].append(ind)
+                    filesMap[ind] = tensorPath
+                    classMap[ind] = i
+                    ind += 1
+        return BirdClassMap , indDict['train/'] , indDict['test/'] , indDict['calib/'] , filesMap , classMap
 
+### TEST ###
 
-    def load_batch(self):
-        nDataPoints = 0
-        batchUncomplete = True
-        batch = []
-        while (batchUncomplete and self.posResumeInIndex < self.nFiles):
-            chunks, samplerate = audio_to_chunks(self.filesMap[self.index[self.posResumeInIndex]])
-            nChunks = len(chunks)
-            if ((nChunks - self.posResumeInFile) <= (self.batchSize - nDataPoints)):
-                for chunk in chunks[self.posResumeInFile:]:
-                    batch.append(chunk_to_spectrum(chunk,samplerate))
-                self.posResumeInIndex += 1
-                self.posResumeInFile = 0
-                nDataPoints = len(batch)
-            else:
-                newPos = self.posResumeInFile + (self.batchSize - nDataPoints)
-                for chunk in chunks[self.posResumeInFile:newPos]:
-                    batch.append(chunk_to_spectrum(chunk,samplerate))
-                self.posResumeInFile = newPos
-                nDataPoints = len(batch)
-            if (nDataPoints == self.batchSize):
-                batchUncomplete = False
-        return batch
-    
-# DataLoader = CustomDataLoader(24,r'C:\Users\fares\OneDrive\Bureau\kaggleBirds\data\Birdclef2024\unlabeled_soundscapes')
-# print(DataLoader.posResumeInIndex)
-# print(DataLoader.posResumeInFile)
-# for j in range(10):
-#     print('batch number : ', j)
-#     b = DataLoader.load_batch()
-#     print(DataLoader.posResumeInIndex)
-#     print(DataLoader.posResumeInFile)
-
-# DataLoader = CustomDataLoader(48,r'C:\Users\fares\OneDrive\Bureau\kaggleBirds\data\Birdclef2024\unlabeled_soundscapes')
-# print(DataLoader.posResumeInIndex)
-# print(DataLoader.posResumeInFile)
-# for j in range(5):
-#     print('batch number : ', j)
-#     b = DataLoader.load_batch()
-#     print(DataLoader.posResumeInIndex)
-#     print(DataLoader.posResumeInFile)
-
-                
-
-
-
-
-
-
-
-
-
-
-# audio_file = r'C:\Users\fares\OneDrive\Bureau\kaggleBirds\data\Birdclef2024\train_audio\asbfly\XC49755.ogg'
-# chunks , samplerate = audio_to_chunks(audio_file)
+# audio_file = r'C:\Users\fares\OneDrive\Bureau\kaggleBirds\data\Birdclef2024\train_audio\asiope1\XC397761.ogg' #hop length aug -> x dimniue
+# chunks, samplerate = audio_to_chunks(audio_file)
 # print(len(chunks))
-# # print(chunks[0].shape)
-# S = chunk_to_spectrum(chunks[0],samplerate)
-
+# S = chunk_to_spectrum(chunks[0], samplerate=samplerate, hop_length=716)
+# print(S.shape)

@@ -22,12 +22,11 @@ Since the task of predictiong multiple birds singing can be brought to the segme
 
 What is done so far:
   - data exploration
-  - implemention of the data loaders, the processor (mel-spectrograms), the autoencoder and the finetuner,
+  - implemention of the data loaders, the processor (mel-spectrograms), the autoencoder and the finetuner, the training scripts
 
 What will be done next:
-  - Implement a dataloader for the finetuning, the current one has a small problem
-  - Verify that my model is efficient on group of 3 birds with a lot of recordings 
-  - Verify that my model is efficient on group of 3 birds with few recordings
+  - Verify that my model is efficient on a group of 3 birds with a lot of recordings 
+  - Verify that my model is efficient on a group of 3 birds with few recordings
   - Train the 30 models
   - Implement the conformal prediction code
   - Implement the inference code
@@ -38,8 +37,9 @@ I need to make a first submission as soon as possible, I will look for ways to i
   - Preprocessing techniques (denoising, birds singing detection, etc..)
   - Other processing techniques (mfccs, etc..)
   - Change the hyperparameters
+  - Cross validation
 
 What need to be done but is not urgent:
   - Cleaning the code, classes are not well written
-  - Implementing a way to launch experiences from the terminal with a config file
+  - Launch experiments with a config file
   - Keeping track of the experiments (I am using a .txt file for now)

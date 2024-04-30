@@ -102,7 +102,7 @@ class ULite(nn.Module):
 
         """BottleNeck"""
         x = self.b5(x)         # (512, 8, 8)
-        print(x.shape)
+        # print(x.shape)
 
         """Decoder"""
         x = self.d5(x, skip5)
@@ -112,6 +112,8 @@ class ULite(nn.Module):
         x = self.d1(x, skip1)
         x = self.conv_out(x)
         return x
+    
+### TESTS ###
 
 # from torchsummary import summary
 # model = ULite().to('cuda:0')
