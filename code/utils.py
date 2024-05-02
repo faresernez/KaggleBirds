@@ -42,34 +42,61 @@ def trainTestCalib(percentages = [0.8,0.2,0.]):
         else:
             return 'train/'
 
-def extract(dataProcessor,ratioTrainTestCalib,dataPath,destination,classes):
-        folders = ['C:/Users/fares/OneDrive/Bureau/kaggleBirds/data/Birdclef2024/finetuning/train/',
-                   'C:/Users/fares/OneDrive/Bureau/kaggleBirds/data/Birdclef2024/finetuning/test/',
-                   'C:/Users/fares/OneDrive/Bureau/kaggleBirds/data/Birdclef2024/finetuning/calib/']
-        for folder in folders:
-            shutil.rmtree(folder)
-            os.mkdir(folder)
+def extract(dataProcessor,ratioTrainTestCalib,dataPath,destination,classes,extractionDone):
+        
+        if (not extractionDone):
+        
+            folders = ['C:/Users/fares/OneDrive/Bureau/kaggleBirds/data/Birdclef2024/finetuning/train/',
+                    'C:/Users/fares/OneDrive/Bureau/kaggleBirds/data/Birdclef2024/finetuning/test/',
+                    'C:/Users/fares/OneDrive/Bureau/kaggleBirds/data/Birdclef2024/finetuning/calib/']
+            for folder in folders:
+                shutil.rmtree(folder)
+                os.mkdir(folder)
 
-        BirdClassMap = {}
-        filesMap = {}
-        classMap = {}
-        ind = 0 
-        indDict = {'train/':[],'test/':[],'calib/':[]}
-        for i,c in enumerate(classes):
-            stri = str(i)
-            BirdClassMap[c] = i
-            classPath = dataPath + c + '/'
-            for path in Path(classPath).glob('*'):
-                chunks = dataProcessor.loadAudio(path)
-                for chunk in chunks:
-                    folder = trainTestCalib(ratioTrainTestCalib)
-                    tensorPath = destination + folder + str(ind) + '_' + stri + '.pt'
-                    torch.save(torch.from_numpy(dataProcessor.processChunk(chunk)),tensorPath)
-                    indDict[folder].append(ind)
-                    filesMap[ind] = tensorPath
-                    classMap[ind] = i
-                    ind += 1
-        return BirdClassMap , indDict['train/'] , indDict['test/'] , indDict['calib/'] , filesMap , classMap
+            BirdClassMap = {}
+            filesMap = {}
+            classMap = {}
+            ind = 0 
+            indDict = {'train/':[],'test/':[],'calib/':[]}
+            for i,c in enumerate(classes):
+                stri = str(i)
+                BirdClassMap[c] = i
+                classPath = dataPath + c + '/'
+                for path in Path(classPath).glob('*'):
+                    chunks = dataProcessor.loadAudio(path)
+                    for chunk in chunks:
+                        folder = trainTestCalib(ratioTrainTestCalib)
+                        tensorPath = destination + folder + str(ind) + '_' + stri + '.pt'
+                        torch.save(torch.from_numpy(dataProcessor.processChunk(chunk)),tensorPath)
+                        indDict[folder].append(ind)
+                        filesMap[ind] = tensorPath
+                        classMap[ind] = i
+                        ind += 1
+            return BirdClassMap , indDict['train/'] , indDict['test/'] , indDict['calib/'] , filesMap , classMap
+        
+        else:
+
+            BirdClassMap = {}
+            filesMap = {}
+            classMap = {}
+            ind = 0 
+            indDict = {'train/':[],'test/':[],'calib/':[]}
+            for i,c in enumerate(classes):
+                stri = str(i)
+                BirdClassMap[c] = i
+                classPath = dataPath + c + '/'
+                for path in Path(classPath).glob('*'):
+                    chunks = dataProcessor.loadAudio(path)
+                    for chunk in chunks:
+                        folder = trainTestCalib(ratioTrainTestCalib)
+                        tensorPath = destination + folder + str(ind) + '_' + stri + '.pt'
+                        # torch.save(torch.from_numpy(dataProcessor.processChunk(chunk)),tensorPath)
+                        indDict[folder].append(ind)
+                        filesMap[ind] = tensorPath
+                        classMap[ind] = i
+                        ind += 1
+            return BirdClassMap , indDict['train/'] , indDict['test/'] , indDict['calib/'] , filesMap , classMap
+
 
 ### TEST ###
 

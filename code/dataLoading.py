@@ -8,16 +8,21 @@ from dataProcessing import melSpectrogram
 
 class CustomDataLoader(ABC):
 
-    def __init__(self,batchSize,dataProcessor,ratioTrainTestCalib,dataPath,classes,tensorShape,dtype): 
+    def __init__(self,batchSize,dataProcessor,ratioTrainTestCalib,dataPath,classes,dtype): 
 
         random.seed(10)
 
         self.dataProcessor = dataProcessor
 
-        self.tensorShape = tensorShape # Replace with auto value
+        self.tensorShape = dataProcessor.tensorShape # Replace with auto value
         self.dtype = dtype
 
         self.classes = classes
+        if (classes is not None):
+            self.nClasses = len(classes)
+        else:
+            self.nClasses = None
+
 
         self.batchSize = batchSize
         self.ratioTrainTestCalib = ratioTrainTestCalib
@@ -60,9 +65,9 @@ class CustomDataLoader(ABC):
 
 class PreTrainingDataLoader(CustomDataLoader):
 
-    def __init__(self,batchSize,dataProcessor,ratioTrainTestCalib,classes,dataPath,tensorShape,dtype):
+    def __init__(self,batchSize,dataProcessor,ratioTrainTestCalib,classes,dataPath,dtype):
 
-        super().__init__(batchSize,dataProcessor,ratioTrainTestCalib,dataPath,classes,tensorShape,dtype)
+        super().__init__(batchSize,dataProcessor,ratioTrainTestCalib,dataPath,classes,dtype)
 
         for i,path in enumerate(Path(dataPath).glob('*')):
             self.filesMap[i] = path
@@ -109,13 +114,15 @@ class PreTrainingDataLoader(CustomDataLoader):
    
 class ClassificationDataLoader(CustomDataLoader): #extracts samples from all audios randomly
 
-    def __init__(self,batchSize,dataProcessor,ratioTrainTestCalib,dataPath,classes,tensorShape,dtype):
+    def __init__(self,batchSize,dataProcessor,ratioTrainTestCalib,dataPath,classes,dtype,extractionDone):
         
-        super().__init__(batchSize,dataProcessor,ratioTrainTestCalib,dataPath,classes,tensorShape,dtype)
+        super().__init__(batchSize,dataProcessor,ratioTrainTestCalib,dataPath,classes,dtype)
+
+        self.extractionDone = extractionDone
 
         self.classFilesMap = {}
 
-        self.BirdClassMap, self.trainIndex , self.testIndex , self.calibIndex , self.filesMap , self.classMap = extract(self.dataProcessor,self.ratioTrainTestCalib,self.dataPath,'C:/Users/fares/OneDrive/Bureau/kaggleBirds/data/BirdClef2024/finetuning/',self.classes)
+        self.BirdClassMap, self.trainIndex , self.testIndex , self.calibIndex , self.filesMap , self.classMap = extract(self.dataProcessor,self.ratioTrainTestCalib,self.dataPath,'C:/Users/fares/OneDrive/Bureau/kaggleBirds/data/BirdClef2024/finetuning/',self.classes,self.extractionDone)
 
         self.nFiles = len(self.filesMap)
         self.index = [*range(self.nFiles)]
@@ -141,11 +148,15 @@ class ClassificationDataLoader(CustomDataLoader): #extracts samples from all aud
 
         return batchX, batchY, self.posResumeInIndex < self.nFiles
     
+    def reinitDataLoader(self,type):
+        self.posResumeInIndex = 0
+
+    
 class OldClassificationDataLoader(CustomDataLoader): #extracts a batch from one audio at a time
 
-    def __init__(self,batchSize,dataProcessor,ratioTrainTestCalib,dataPath,classes,tensorShape,dtype):
+    def __init__(self,batchSize,dataProcessor,ratioTrainTestCalib,dataPath,classes,dtype):
         
-        super().__init__(batchSize,dataProcessor,ratioTrainTestCalib,dataPath,classes,tensorShape,dtype)
+        super().__init__(batchSize,dataProcessor,ratioTrainTestCalib,dataPath,classes,dtype)
 
         self.classFilesMap = {}
         self.BirdClassMap = {}
@@ -217,7 +228,6 @@ class OldClassificationDataLoader(CustomDataLoader): #extracts a batch from one 
 #                                       ratioTrainTestCalib=[0.8,0.2,0.],
 #                                       dataPath= 'C:/Users/fares/OneDrive/Bureau/kaggleBirds/data/BirdClef2024/train_audio/',
 #                                       classes = ['ashpri1','barfly1','gloibi'],
-#                                       tensorShape=(224,224),
 #                                       dtype=torch.float32)
 
 # for j in range(10):
@@ -246,7 +256,6 @@ class OldClassificationDataLoader(CustomDataLoader): #extracts a batch from one 
 #                                    ratioTrainTestCalib=[0.8,0.2,0.],
 #                                    dataPath= 'C:/Users/fares/OneDrive/Bureau/kaggleBirds/data/BirdClef2024/unlabeled_soundscapes/',
 #                                    classes = [],
-#                                    tensorShape=(224,224),
 #                                    dtype=torch.float32)
 
 # print(DataLoader.posResumeInIndex)

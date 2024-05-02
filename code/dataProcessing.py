@@ -28,8 +28,8 @@ class melSpectrogram(DataProcessor):
         self.n_mels = n_mels
         self.hop_length = hop_length
         self.fmax = self.sr / 2
+        self.tensorShape = self.processChunk(self.loadAudio('C:/Users/fares/OneDrive/Bureau/kaggleBirds/data/BirdClef2024/unlabeled_soundscapes/460830.ogg')[0]).shape
 
     def processChunk(self,chunk):
+        # return melspectrogram(y = chunk, sr = self.sr, n_mels = self.n_mels, hop_length = self.hop_length, fmax = self.fmax)
         return normalize(melspectrogram(y = chunk, sr = self.sr, n_mels = self.n_mels, hop_length = self.hop_length, fmax = self.fmax))
-
-

@@ -1,4 +1,4 @@
-This my code for the BirdC* competition
+Hello, this my code for the BirdC* competition
 More or less clean code is in kaggleBirds/code , the other files were written in a rush for the 2023 competition, they're of lower quality and importance./n
 The competition goal is to predict the singing birds (182 different species) in each 5s-frame in approximately 1100 audio of 5mn./n
 The data comes from independent bird lovers that upload their recordings in xenocanto.org. We have 7gb of labeled soundscapes and 14gb of unlabeled soundscapes, more unlabeled soundscapes can be found on internet though./n
@@ -19,27 +19,27 @@ It seems to work better than the one I coded myself.
 UNet was first designed especially for medical image segmentation. It showed such good results that it used in many other fields after. /n
 Since the task of predictiong multiple birds singing can be brought to the segmentation of a spectrogram, I figured that this architecture could help. /n
 
-
 What is done so far:
   - data exploration
   - implemention of the data loaders, the processor (mel-spectrograms), the autoencoder and the finetuner, the training scripts
+  - training of the autoenoder (MSE loss = 4.9013e-09) 
+  - I was able to achieve 70% accuracy with the 12 most recorded birds and 50% accuracy with the least recorded birds when fituning the encoder + other layers (cnn + linear)
+  - I tried to freeze the encoder in the classifier but it doesn't ssem to work, I will probably re-try it with optuna to gain computing time: same encoder and different additional layers for every classifier
 
 What will be done next:
-  - Verify that my model is efficient on a group of 3 birds with a lot of recordings 
-  - Verify that my model is efficient on a group of 3 birds with few recordings
-  - Train the 30 models
+  - Train the 30 models with optuna to fintune the hyperparameters of each each classifier
   - Implement the conformal prediction code
   - Implement the inference code
   - make a first submission
 
 I need to make a first submission as soon as possible, I will look for ways to improve my model after that, I think of:
-  - Data augmentation
+  - Data augmentation (adding noise, mixing two records, etc..)
   - Preprocessing techniques (denoising, birds singing detection, etc..)
   - Other processing techniques (mfccs, etc..)
   - Change the hyperparameters
   - Cross validation
+  - Add 'nothing' class in each subgroup to learn to predict when there is no singing bird in the time frame
 
 What need to be done but is not urgent:
   - Cleaning the code, classes are not well written
-  - Launch experiments with a config file
   - Keeping track of the experiments (I am using a .txt file for now)

@@ -1,0 +1,71 @@
+config :
+
+  dataProcessorOpts :
+    type : melSpectrogram
+    seconds : 5
+    sr : 32000
+    n_mels : 224
+    hop_length : 716
+  
+  # classesDict : None
+
+  classesDict :
+    nilfly2 : 1.830038070678711 
+    rutfly6 : 1.8044624328613281
+    scamin3 : 1.7079267501831055 
+    bncwoo3 : 1.6283693313598633 
+    wbbfly1 : 1.2158184051513672 
+    pomgrp2 : 1.0582923889160156 
+    inpher1 : 0.9841403961181641 
+    blaeag1 : 0.9221534729003906 
+    darter2 : 0.6037435531616211
+    integr : 0.5658245086669922
+    asiope1 : 0.5091238021850586
+    niwpig1 : 0.3805961608886719
+
+  dataLoaderOpts : 
+    # type : PreTrainingDataLoader 
+    type : ClassificationDataLoader
+    batchSize : 24
+    ratioTrainTestCalib : 
+      - 0.8
+      - 0.2
+      - 0.
+    # dataPath : C:/Users/fares/OneDrive/Bureau/kaggleBirds/data/BirdClef2024/unlabeled_soundscapes/
+    dataPath : C:/Users/fares/OneDrive/Bureau/kaggleBirds/data/BirdClef2024/train_audio/
+    dtype : torch.float32
+    extractionDone : True 
+
+  pretrainedModelOpts :
+    type : ULite
+    pretrainedModelPath : C:/Users/fares/OneDrive/Bureau/kaggleBirds/models/BirdClef2024/pretrainedModel3/epoch_4
+
+  # modelOpts :
+  #   type : ULite
+  #   lr : 0.001
+  #   step_size : 5
+  #   gamma : 0.8
+  #   nEpochs : 100
+  #   optimizer : Adam
+  #   criterion : MSELoss
+  #   use_gpu : True
+
+  modelOpts :
+    type : ClassifierForULite
+    lr : 0.001
+    step_size : 5
+    gamma : 0.8
+    nEpochs : 100
+    optimizer : Adam
+    criterion : CrossEntropyLoss
+    use_gpu : True
+
+  expOpts :
+    # savingPath : C:/Users/fares/OneDrive/Bureau/kaggleBirds/models/BirdClef2024/pretrainedmodel3/
+    savingPath : C:/Users/fares/OneDrive/Bureau/kaggleBirds/models/BirdClef2024/finetunedModel4/
+    loggingPath : None
+
+
+
+
+    

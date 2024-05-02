@@ -1,5 +1,7 @@
 import torch.nn as nn
 import torch
+from ULite import ULite
+from torchsummary import summary
 
 
 
@@ -73,14 +75,19 @@ class ClassifierForULite(nn.Module):
         
         self.autoEncoder = autoEncoder
 
-        self.cnn1 = nn.Conv2d(512, 256, 5, stride=1, padding=0, bias=False)
-        self.cnn2 = nn.Conv2d(256, 128, 3, stride=1, padding=0, bias=False)
+        self.totunecnn1 = nn.Conv2d(512, 16, 3, stride=1, padding=0, bias=False)
+        self.totunecnn2 = nn.Conv2d(16, 8, 3, stride=1, padding=0, bias=False)
+        # self.totunecnn1 = nn.Conv2d(512, 64, 3, stride=1, padding=0, bias=False)
+        # self.totunecnn2 = nn.Conv2d(64, 32, 3, stride=1, padding=0, bias=False)
         self.relu = nn.ReLU()
-        self.lin1 = nn.Linear(128,32)
-        self.lin2 = nn.Linear(32,self.nClasses)
-        self.soft = nn.Softmax(dim=1)
-
-
+        self.pool = nn.MaxPool2d(3)
+        # self.lin1 = nn.Linear(1024,512)
+        # self.lin2 = nn.Linear(512,256)
+        # self.lin3 = nn.Linear(256,128)
+        # self.lin4 = nn.Linear(128,64)
+        # self.lin5 = nn.Linear(64,32)
+        self.totunelin6 = nn.Linear(8,self.nClasses)
+        # self.soft = nn.Softmax(dim=1)
 
         # self.network = nn.Sequential(
         #     # autoEncoder.encoder,
@@ -102,16 +109,25 @@ class ClassifierForULite(nn.Module):
         x, _ = self.autoEncoder.e3(x)
         x, _ = self.autoEncoder.e4(x)
         x, _ = self.autoEncoder.e5(x)
-        x = self.cnn1(x)
+        x = self.totunecnn1(x)
         x = self.relu(x)
-        x = self.cnn2(x)
+        x = self.totunecnn2(x)
         x = self.relu(x)
+        x = self.pool(x)
         x = torch.flatten(x, start_dim=1)
-        x = self.lin1(x)
-        x = self.relu(x)
-        x = self.lin2(x)
-        x = self.relu(x)
-        x = self.soft(x)
+        # x = self.lin1(x)
+        # x = self.relu(x)
+        # x = self.lin2(x)
+        # x = self.relu(x)
+        # x = self.lin3(x)
+        # x = self.relu(x)
+        # x = self.lin4(x)
+        # x = self.relu(x)
+        # x = self.lin5(x)
+        # x = self.relu(x)
+        x = self.totunelin6(x)
+        # x = self.relu(x)
+        # x = self.soft(x)
         return x
 
 
@@ -179,6 +195,12 @@ class ClassifierForULite(nn.Module):
 #         print(x.shape)
 #         x = self.sig(x)
 #         return x
+
+### TESTS ###
+
+# pretrainedModel = ULite().to('cuda:0')
+# model = ClassifierForULite(pretrainedModel,3).to('cuda:0')
+# summary(model, (1,224,224))
     
 # model = AE()
 # t= torch.ones((224,224)).unsqueeze(0).unsqueeze(0)
