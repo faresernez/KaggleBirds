@@ -1,4 +1,4 @@
-Hello, this my code for the BirdC* competition. /n
+Hello, this my code for the BirdC* competition./n
 More or less clean code is in kaggleBirds/code , the other files were written in a rush for the 2023 competition, they're of lower quality and importance./n
 The competition goal is to predict the singing birds (182 different species) in each 5s-frame in approximately 1100 audio of 5mn./n
 The data comes from independent bird lovers that upload their recordings in xenocanto.org. We have 7gb of labeled soundscapes and 14gb of unlabeled soundscapes, more unlabeled soundscapes can be found on internet though./n
