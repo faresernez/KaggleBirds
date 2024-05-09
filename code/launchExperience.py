@@ -1,5 +1,7 @@
+# code to launch multiple experiences from a config file
+
 import yaml
-from training import Experience
+from experience import Experience
 
 def main():
 
@@ -11,6 +13,8 @@ def main():
         return config
     
     config = config['config']
+
+    exp_type = config[exp_type]
 
     dataProcessorOpts = config['dataProcessorOpts']
 
@@ -29,9 +33,18 @@ def main():
                     dataLoaderOpts=dataLoaderOpts, 
                     pretrainedModelOpts=pretrainedModelOpts, 
                     modelOpts=modelOpts, 
-                    expOpts=expOpts)
+                    expOpts=expOpts,
+                    exp_type=exp_type)
+    
     exp.launchExp()
+    print('lr')
+    print(exp.lr)
+    exp.lr = 0.0001
+    exp.initializeOptimizer()
     exp.reinitialize()
+    exp.launchExp()
+    print('new lr')
+    print(exp.lr)
 
 if __name__ == '__main__': 
     main()

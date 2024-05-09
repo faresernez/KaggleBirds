@@ -1,10 +1,14 @@
+# contains the different data loaders that can be used during training
+
 from pathlib import Path
 import random
 import torch
-from utils import audio_to_chunks, chunk_to_spectrum, trainTestCalib, extract
+from utils import trainTestCalib, extract, newExtract
 from abc import ABC, abstractmethod
 from dataProcessing import melSpectrogram
-    
+import time
+import torch
+
 
 class CustomDataLoader(ABC):
 
@@ -69,6 +73,15 @@ class PreTrainingDataLoader(CustomDataLoader):
 
         super().__init__(batchSize,dataProcessor,ratioTrainTestCalib,dataPath,classes,dtype)
 
+        self.nFiles = 0
+        self.filesMap = {}
+        self.index = []
+        self.trainIndex = []
+        self.testIndex = []
+        
+        self.posResumeInIndex = 0
+        self.posResumeInFile = 0
+
         for i,path in enumerate(Path(dataPath).glob('*')):
             self.filesMap[i] = path
 
@@ -86,6 +99,7 @@ class PreTrainingDataLoader(CustomDataLoader):
 
         self.nTrainFiles = len(self.trainIndex)
         self.nTestFiles = len(self.testIndex)
+
 
     def loadBatch(self):
         nDataPoints = 0
@@ -110,28 +124,32 @@ class PreTrainingDataLoader(CustomDataLoader):
                 batchUncomplete = False
 
         return batch, self.posResumeInIndex < self.nFiles
+    
+class ClassificationDataLoader(CustomDataLoader):
 
-   
-class ClassificationDataLoader(CustomDataLoader): #extracts samples from all audios randomly
-
-    def __init__(self,batchSize,dataProcessor,ratioTrainTestCalib,dataPath,classes,dtype,extractionDone):
+    def __init__(self,batchSize,dataProcessor,ratioTrainTestCalib,dataPath,classes,dtype,tensorShape,extractionDone,byFileExtraction=True):
         
         super().__init__(batchSize,dataProcessor,ratioTrainTestCalib,dataPath,classes,dtype)
 
         self.extractionDone = extractionDone
+        self.byFileExtraction = byFileExtraction
+        self.tensorShape = tensorShape
 
-        self.classFilesMap = {}
+        destination = 'C:/Users/fares/OneDrive/Bureau/kaggleBirds/data/Birdclef2024/finetuning/'
 
-        self.BirdClassMap, self.trainIndex , self.testIndex , self.calibIndex , self.filesMap , self.classMap = extract(self.dataProcessor,self.ratioTrainTestCalib,self.dataPath,'C:/Users/fares/OneDrive/Bureau/kaggleBirds/data/BirdClef2024/finetuning/',self.classes,self.extractionDone)
-
-        self.nFiles = len(self.filesMap)
-        self.index = [*range(self.nFiles)]
+        self.BirdClassMap , self.trainIndex , self.testIndex , self.calibIndex , self.filesMap , self.classMap = extract(self.dataProcessor,
+                                                                                                                         self.ratioTrainTestCalib,
+                                                                                                                         self.dataPath,
+                                                                                                                         destination,
+                                                                                                                         self.classes,
+                                                                                                                         self.extractionDone)
 
         self.nTrainFiles = len(self.trainIndex)
         self.nTestFiles = len(self.testIndex)
         self.nCalibFiles = len(self.calibIndex)
 
     def loadBatch(self):
+
         nDataPoints = 0
         batchX = torch.empty((0,1) + self.tensorShape, dtype = self.dtype)
         batchY = torch.empty((0), dtype = torch.long)
@@ -148,87 +166,83 @@ class ClassificationDataLoader(CustomDataLoader): #extracts samples from all aud
 
         return batchX, batchY, self.posResumeInIndex < self.nFiles
     
-    def reinitDataLoader(self,type):
-        self.posResumeInIndex = 0
+class PytorchClassificationDataLoader():  #A data loader based on torch.utils.data.DataLoader and torch.utils.data.Dataset
 
+    def __init__(self,batchSize,dataProcessor,ratioTrainTestCalib,dataPath,classes,dtype,extractionDone):
+
+        random.seed(10)
+
+        self.batchSize = batchSize
+        self.dataProcessor = dataProcessor
+        self.ratioTrainTestCalib = ratioTrainTestCalib
+        self.dataPath = dataPath
+        self.classes = classes
+        self.dtype = dtype
+        self.extractionDone = extractionDone
+
+        self.nClasses = len(classes)
+
+        partition, labels = newExtract(dataProcessor,ratioTrainTestCalib,dataPath,classes,extractionDone)
+
+        self.params = {'batch_size': self.batchSize, 'shuffle': True, 'num_workers': 4}
+
+        if self.ratioTrainTestCalib[0] != 0 :
+            self.train_set = Dataset(partition['train'], labels)
+            self.train_generator = torch.utils.data.DataLoader(self.train_set, **self.params)
+        if self.ratioTrainTestCalib[1] != 0 :
+            self.test_set = Dataset(partition['test'], labels)
+            self.test_generator = torch.utils.data.DataLoader(self.test_set, **self.params)
+        if self.ratioTrainTestCalib[2] != 0 :
+            self.calib_set = Dataset(partition['calib'], labels)
+            self.calib_generator = torch.utils.data.DataLoader(self.calib_set, **self.params)
     
-class OldClassificationDataLoader(CustomDataLoader): #extracts a batch from one audio at a time
+class Dataset(torch.utils.data.Dataset):
 
-    def __init__(self,batchSize,dataProcessor,ratioTrainTestCalib,dataPath,classes,dtype):
-        
-        super().__init__(batchSize,dataProcessor,ratioTrainTestCalib,dataPath,classes,dtype)
+    def __init__(self, list_IDs, labels):
 
-        self.classFilesMap = {}
-        self.BirdClassMap = {}
+        self.labels = labels
+        self.list_IDs = list_IDs
 
-        j = 0                
-        for i,c in enumerate(classes):
-            self.BirdClassMap[c] = i
-            classPath = dataPath + c + '/'
-            for path in Path(classPath).glob('*'):
-                self.filesMap[j] = path
-                self.classFilesMap[j] = i
-                j+=1
+    def __len__(self):
+        return len(self.list_IDs)
 
-        self.nFiles = len(self.filesMap)
-        self.index = [*range(self.nFiles)]
+    def __getitem__(self, index):
+        # Select sample
+        ID = self.list_IDs[index]
+        # Load data and get label
+        X = torch.load('C:/Users/fares/OneDrive/Bureau/kaggleBirds/data/Birdclef2024/finetuning/' + ID + '.pt')
+        y = self.labels[ID]
 
-        for ind in self.index:
-            dest = trainTestCalib(ratioTrainTestCalib)
-            if (dest == 'train/'):
-                self.trainIndex.append(ind)
-            elif (dest == 'test/'):
-                self.testIndex.append(ind)
-            else:
-                self.calibIndex.append(ind)
+        return X, y
 
-        self.nTrainFiles = len(self.trainIndex)
-        self.nTestFiles = len(self.testIndex)
-        self.nCalibFiles = len(self.calibIndex)
-
-    def loadBatch(self):
-        nDataPoints = 0
-        batchUncomplete = True
-        batchX = torch.empty((0,1) + self.tensorShape, dtype = self.dtype)
-        batchY = torch.empty((0), dtype = torch.long)
-
-        while (batchUncomplete and self.posResumeInIndex < self.nFiles):
-            chunks = self.dataProcessor.loadAudio(self.filesMap[self.index[self.posResumeInIndex]])
-            nChunks = len(chunks)
-            if ((nChunks - self.posResumeInFile) <= (self.batchSize - nDataPoints)):
-                for chunk in chunks[self.posResumeInFile:]:
-                    batchX = torch.cat((batchX,torch.from_numpy(self.dataProcessor.processChunk(chunk)).unsqueeze(0).unsqueeze(0)),dim = 0)
-                y = torch.ones(len(chunks[self.posResumeInFile:]),dtype=torch.long)*self.classFilesMap[self.index[self.posResumeInIndex]]
-                batchY = torch.cat((batchY,y),dim = 0)
-                self.posResumeInIndex += 1
-                self.posResumeInFile = 0
-                nDataPoints = len(batchX)
-            else:
-                newPos = self.posResumeInFile + (self.batchSize - nDataPoints)
-                for chunk in chunks[self.posResumeInFile:newPos]:
-                    batchX = torch.cat((batchX,torch.from_numpy(self.dataProcessor.processChunk(chunk)).unsqueeze(0).unsqueeze(0)),dim = 0)
-                y = torch.ones(len(chunks[self.posResumeInFile:newPos]),dtype=torch.long)*self.classFilesMap[self.index[self.posResumeInIndex]]
-                batchY = torch.cat((batchY,y),dim = 0)
-                self.posResumeInFile = newPos
-                nDataPoints = len(batchX)
-            if (nDataPoints == self.batchSize):
-                batchUncomplete = False
-
-        return batchX, batchY, self.posResumeInIndex < self.nFiles
     
 ### TESTS ###
 
-# dataProcessor = melSpectrogram(seconds=5,
-#                                sr=32000,
-#                                n_mels=224,
-#                                hop_length=716)
+# if __name__ == '__main__':
+#     dataProcessor = melSpectrogram(seconds=5,
+#                                 sr=32000,
+#                                 n_mels=224,
+#                                 hop_length=716)
 
-# DataLoader = OldClassificationDataLoader(batchSize=24,
-#                                       dataProcessor = dataProcessor,
-#                                       ratioTrainTestCalib=[0.8,0.2,0.],
-#                                       dataPath= 'C:/Users/fares/OneDrive/Bureau/kaggleBirds/data/BirdClef2024/train_audio/',
-#                                       classes = ['ashpri1','barfly1','gloibi'],
-#                                       dtype=torch.float32)
+#     DataLoader = NewClassificationDataLoader(batchSize=48,
+#                                         dataProcessor = dataProcessor,
+#                                         ratioTrainTestCalib=[0.8,0.2,0.],
+#                                         dataPath= 'C:/Users/fares/OneDrive/Bureau/kaggleBirds/data/BirdClef2024/train_audio/',
+#                                         classes = ['ashpri1','barfly1','gloibi'],
+#                                         dtype=torch.float32,
+#                                         extractionDone = False)
+
+#     DataLoader.startTraining()
+#     x,y,test = DataLoader.loadBatch()
+#     print(x)
+#     print(y)
+#     print(x.shape)
+#     print(y.shape)
+#     x,y,test = DataLoader.loadBatch()
+#     print(x)
+#     print(y)
+#     print(x.shape)
+#     print(y.shape)
 
 # for j in range(10):
 #     print('batch number : ', j)

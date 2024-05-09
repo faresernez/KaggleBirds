@@ -1,8 +1,12 @@
-from dataProcessing import melSpectrogram
-from dataLoading import PreTrainingDataLoader, ClassificationDataLoader, OldClassificationDataLoader 
-from myModels import AutoEncoder, Classifier, ClassifierForULite
-from ULite import ULite
+# contains PreTrainer(), Finetuner(), FinetunerOptuna() and FinetunerForPyDataLoader()
+# All classes are derived from Trainer() which initializes the trainer parameters and
+# implements the train and test methods 
 
+from dataProcessing import melSpectrogram
+from dataLoading import PreTrainingDataLoader,  PytorchClassificationDataLoader, ClassificationDataLoader
+from myModels import ClassifierForULite
+from ULite import ULite
+from utils import computeTrainingWeights, computeTrainingWeightsForPyDataLoader
 import torch
 import torch.nn as nn
 torch.backends.cudnn.benchmark = True
@@ -10,6 +14,7 @@ import time
 from torchsummary import summary
 from abc import ABC, abstractmethod
 from torchmetrics.classification import MulticlassAccuracy
+import optuna
 
 
 
@@ -27,6 +32,9 @@ class Trainer(ABC):
         self.use_gpu = use_gpu
         self.savingPath = savingPath
         self.loggingPath = loggingPath
+
+        if (self.use_gpu):
+            self.model.to('cuda:0')
 
         self.nClasses = dataLoader.nClasses
 
@@ -69,7 +77,7 @@ class PreTrainer(Trainer):
             self.model.to('cuda:0')
 
         # summary(self.model, (1,224,224))
-        
+
         for epoch in range(self.nEpochs):
             print('epoch : ', epoch)
             self.dataLoader.startTraining()
@@ -90,7 +98,9 @@ class PreTrainer(Trainer):
             torch.save(self.model.state_dict(), self.savingPath + 'epoch_' + str(epoch))
             self.test()
 
-class Finetuner(Trainer):
+        return None
+
+class Finetuner(Trainer): #only implemented for customDataLoader
 
     def __init__(self,model,dataLoader,nEpochs,criterion,lr,optimizer,scheduler,use_gpu,savingPath,loggingPath):
 
@@ -100,8 +110,6 @@ class Finetuner(Trainer):
         self.classAccuracy = MulticlassAccuracy(num_classes=self.nClasses, average=None).to('cuda:0')
 
     def test(self):
-
-        start = time.time()
 
         nBatch = 0
         loss = 0
@@ -120,15 +128,17 @@ class Finetuner(Trainer):
                 loss = self.criterion(Yhat, Y)
                 acc += self.overallAccuracy(Yhat,Y)
                 classAcc += self.classAccuracy(Yhat,Y)
-        end = time.time()
-        print('testing time : ',(end-start)/3600)
-        print('loss : ',loss/nBatch)
-        print('overall accuracy : ', acc/nBatch)
-        print('per label accuracy : ', classAcc/nBatch)
-
+        
+        accuracy = acc/nBatch
+        classAcc = classAcc/nBatch
+        loss = loss/nBatch
+        accuracy = accuracy.cpu().numpy().tolist()
+        classAcc = classAcc.cpu().numpy().tolist()
+        loss = loss.cpu().numpy().tolist()
+        
+        return loss, accuracy, classAcc
+    
     def train(self):
-
-        start = time.time()
 
         if (self.use_gpu):
             self.model.to('cuda:0')
@@ -137,7 +147,7 @@ class Finetuner(Trainer):
         # print(self.model)
 
         for epoch in range(self.nEpochs):
-            print('epoch : ', epoch)
+            # print('epoch : ', epoch)
             self.dataLoader.startTraining()
             training = True
             while training:
@@ -152,175 +162,171 @@ class Finetuner(Trainer):
                 self.optimizer.step()
             self.scheduler.step()
 
-            end = time.time()
-            print('training time : ',(end-start)/3600)
+            if self.dataLoader.ratioTrainTestCalib[1] != 0:
+                loss, accuracy, classAcc = self.test()
+
+        if self.savingPath is not None:
             torch.save(self.model.state_dict(), self.savingPath + 'epoch_' + str(epoch))
-            self.test()
 
-class Experience():
-
-    def __init__(self,dataProcessorOpts, classesDict, dataLoaderOpts, pretrainedModelOpts, modelOpts, expOpts):
-
-        self.dataProcessorOpts = dataProcessorOpts
-        self.classesDict = classesDict
-        self.dataLoaderOpts = dataLoaderOpts
-        self.pretrainedModelOpts = pretrainedModelOpts
-        self.modelOpts = modelOpts
-        self.expOpts = expOpts
-
-        if (self.dataProcessorOpts['type'] == 'melSpectrogram'):
-            self.dataProcessor = melSpectrogram(seconds = self.dataProcessorOpts['seconds'],
-                                                sr = self.dataProcessorOpts['sr'],
-                                                n_mels = self.dataProcessorOpts['n_mels'],
-                                                hop_length = self.dataProcessorOpts['hop_length'])
+        if self.dataLoader.ratioTrainTestCalib[1] != 0:
+                return loss, accuracy, classAcc
         else:
-            print('wrong dataProcessor')
+            return None, None, None
         
-        if self.classesDict is not None:
-            self.exp_type = 'finetuning'
-            self.classes = []
-            self.w = []
-            for key, value in self.classesDict.items():
-                self.classes.append(key)
-                self.w.append(value)
-            s = sum(self.w)
-            self.w = [ele / s for ele in self.w]
-            self.w = torch.FloatTensor(self.w).to('cuda:0')
-
-        else:
-            self.exp_type = 'pretraining'
-            self.classes = None
+        #log accuracy
         
-        if (self.dataLoaderOpts['dtype'] == 'torch.float32'):
-            self.dtype = torch.float32
+class FinetunerOptuna(Finetuner): #to test
+# class FinetunerOptuna(Trainer):
 
-        self.extractionDone = self.dataLoaderOpts['extractionDone']
-        self.batchSize = self.dataLoaderOpts['batchSize']
+    def __init__(self,model,dataLoader,nEpochs,criterion,lr,optimizer,scheduler,use_gpu,savingPath,loggingPath):
 
-        if (self.dataLoaderOpts['type'] == 'ClassificationDataLoader'):
-            self.dataLoader = ClassificationDataLoader(batchSize = self.batchSize,
-                                                       dataProcessor = self.dataProcessor,
-                                                       ratioTrainTestCalib = self.dataLoaderOpts['ratioTrainTestCalib'],
-                                                       dataPath = self.dataLoaderOpts['dataPath'],
-                                                       classes = self.classes,
-                                                       dtype = self.dtype,
-                                                       extractionDone = self.extractionDone)
-        elif (self.dataLoaderOpts['type'] == 'OldClassificationDataLoader'):
-            self.dataLoader = OldClassificationDataLoader(batchSize = self.dataLoaderOpts['batchSize'],
-                                                    dataProcessor = self.dataProcessor,
-                                                    ratioTrainTestCalib = self.dataLoaderOpts['ratioTrainTestCalib'],
-                                                    dataPath = self.dataLoaderOpts['dataPath'],
-                                                    classes = self.classes,
-                                                    dtype =self.dtype)
-            
-        elif (self.dataLoaderOpts['type'] == 'PreTrainingDataLoader'):
-            self.dataLoader = PreTrainingDataLoader(batchSize = self.dataLoaderOpts['batchSize'],
-                                                    dataProcessor = self.dataProcessor,
-                                                    ratioTrainTestCalib = self.dataLoaderOpts['ratioTrainTestCalib'],
-                                                    dataPath = self.dataLoaderOpts['dataPath'],
-                                                    classes = None,
-                                                    dtype = self.dtype)
-        else:
-            print('wrong dataLoader')
+        super().__init__(model,dataLoader,nEpochs,criterion,lr,optimizer,scheduler,use_gpu,savingPath,loggingPath)
 
-        if (self.exp_type == 'finetuning'):
-            if (self.pretrainedModelOpts['type'] == 'ULite'):
-                self.pretrainedModel = ULite()
-                self.pretrainedModel.load_state_dict(torch.load(self.pretrainedModelOpts['pretrainedModelPath']))
-            else:
-                print('wrong pretrained model')
+        # self.overallAccuracy = MulticlassAccuracy(num_classes=self.nClasses).to('cuda:0')
+        # self.classAccuracy = MulticlassAccuracy(num_classes=self.nClasses, average=None).to('cuda:0')
 
-            if (self.modelOpts['type'] == 'ClassifierForULite'):
-                self.model = ClassifierForULite(self.pretrainedModel,self.dataLoader.nClasses)
-            else:
-                print('wrong model')
+    # def test(self):
 
-            if (self.modelOpts['criterion'] == 'CrossEntropyLoss'):
-                self.criterion = nn.CrossEntropyLoss(weight = self.w)
-            else:
-                print('wrong criterion')
-                
-        else:
-            if (self.modelOpts['type'] == 'ULite'):
-                self.model = ULite()
-            else:
-                print('wrong model')
+    #     nBatch = 0
+    #     loss = 0
+    #     acc = torch.tensor(0.).to('cuda:0')
+    #     classAcc = torch.zeros(self.nClasses).to('cuda:0')
+    #     self.dataLoader.startTesting()
+    #     testing = True
+    #     while testing:
+    #         X, Y, testing = self.dataLoader.loadBatch()
+    #         nBatch += 1
+    #         if self.use_gpu:
+    #             X = X.to('cuda:0')
+    #             Y = Y.to('cuda:0')
+    #         with torch.no_grad():
+    #             Yhat = self.model(X)
+    #             loss = self.criterion(Yhat, Y)
+    #             acc += self.overallAccuracy(Yhat,Y)
+    #             classAcc += self.classAccuracy(Yhat,Y)
 
-            if (self.modelOpts['criterion'] == 'MSELoss'):
-                self.criterion = nn.MSELoss()
-            else:
-                print('wrong criterion')
-
-        self.nEpochs = self.modelOpts['nEpochs']
-
-        self.lr = self.modelOpts['lr']
-        self.step_size = self.modelOpts['step_size']
-        self.gamma = self.modelOpts['gamma']
-        self.initializeOptimizer()
-        # self.initializeScheduler()
+    #     accuracy = acc/nBatch
+    #     classAcc = classAcc/nBatch
+    #     loss = loss/nBatch
+    #     accuracy = accuracy.cpu().numpy().tolist()
+    #     classAcc = classAcc.cpu().numpy().tolist()
+    #     loss = loss.cpu().numpy().tolist()
         
-        self.use_gpu = self.modelOpts['use_gpu']
-        self.savingPath = self.expOpts['savingPath']
-        self.loggingPath = self.expOpts['loggingPath']
+    #     return loss, accuracy, classAcc
 
-        self.initialize()
+    def test(self):
+        return super().test()
 
-    def initialize(self):
-        if (self.exp_type == 'finetuning'):
-            self.trainer = Finetuner(model=self.model,
-                                     dataLoader=self.dataLoader,
-                                     nEpochs=self.nEpochs,
-                                     criterion=self.criterion,
-                                     lr=self.lr,
-                                     optimizer=self.optimizer,
-                                     scheduler=self.scheduler,
-                                     use_gpu=self.use_gpu,
-                                     savingPath=self.savingPath,
-                                     loggingPath=self.loggingPath)
-        else:
-            self.trainer = PreTrainer(model=self.model,
-                                      dataLoader=self.dataLoader,
-                                      nEpochs=self.nEpochs,
-                                      criterion=self.criterion,
-                                      lr=self.lr,
-                                      optimizer=self.optimizer,
-                                      scheduler=self.scheduler,
-                                      use_gpu=self.use_gpu,
-                                      savingPath=self.savingPath,
-                                      loggingPath=self.loggingPath)
-            
-    def initializeDataLoader(self,type='train'):
-        if type == 'train':
+    def train(self,trial):
+        
+        for epoch in range(self.nEpochs):
             self.dataLoader.startTraining()
-        elif type == 'test':
-            self.dataLoader.startTesting()
-        elif type == 'calib':
-            self.dataLoader.startCalibrating()
+            training = True
+            while training:
+                X, Y, training = self.dataLoader.loadBatch()
+                if self.use_gpu:
+                    X = X.to('cuda:0')
+                    Y = Y.to('cuda:0')
+                Yhat = self.model(X)
+                self.optimizer.zero_grad()
+                loss = self.criterion(Yhat, Y)
+                loss.backward()
+                self.optimizer.step()
+            self.scheduler.step()
 
-    def initializeScheduler(self):
-        self.scheduler =  torch.optim.lr_scheduler.StepLR(self.optimizer,
-                                                          step_size = self.step_size,
-                                                          gamma = self.gamma)
+            loss, accuracy, classAcc = self.test()
+            trial.report(accuracy,epoch)
 
-    def initializeOptimizer(self):
-        if (self.modelOpts['optimizer'] == 'Adam'):
-            self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
-        else:
-            print('wrong optimizer')
-        self.initializeScheduler()
+            if trial.should_prune():
+                raise optuna.TrialPruned()
 
-    def reinitialize(self):
-        self.initializeDataLoader()
-        self.initialize()
+        with open(self.loggingPath, 'a') as f:
+            f.write('  results of the model on trial number : ' + str(trial.number))
+            f.write('\n')
+            f.write("  loss: " + str(loss))
+            f.write('\n')
+            f.write("  overall accuracy: " + str(accuracy))
+            f.write('\n')
+            f.write("  per class accuracy : " + str(classAcc))
+            f.write('\n')
 
-    def launchExp(self):
+        return loss, accuracy, classAcc
+    
+class FinetunerOptunaForPyDataLoader(Trainer):
 
-        print('bla bla bla') #or log bla bla bla
-        self.trainer.train()
-        print('fin bla bla bla') #or log bla bla bla
+    def __init__(self,model,dataLoader,nEpochs,criterion,lr,optimizer,scheduler,use_gpu,savingPath,loggingPath):
 
+        super().__init__(model,dataLoader,nEpochs,criterion,lr,optimizer,scheduler,use_gpu,savingPath,loggingPath)
 
-            
+        self.overallAccuracy = MulticlassAccuracy(num_classes=self.nClasses).to('cuda:0')
+        self.classAccuracy = MulticlassAccuracy(num_classes=self.nClasses, average=None).to('cuda:0')
+
+    def test(self):
+
+        nBatch = 0
+        loss = 0
+        acc = torch.tensor(0.).to('cuda:0')
+        classAcc = torch.zeros(self.nClasses).to('cuda:0')
+
+        for X, Y in self.dataLoader.test_generator:
+            nBatch += 1
+            if self.use_gpu:
+                X = X.to('cuda:0')
+                Y = Y.to('cuda:0')
+            with torch.no_grad():
+                Yhat = self.model(X)
+                loss = self.criterion(Yhat, Y)
+                acc += self.overallAccuracy(Yhat,Y)
+                classAcc += self.classAccuracy(Yhat,Y)
+
+        accuracy = acc/nBatch
+        classAcc = classAcc/nBatch
+        loss = loss/nBatch
+        accuracy = accuracy.cpu().numpy().tolist()
+        classAcc = classAcc.cpu().numpy().tolist()
+        loss = loss.cpu().numpy().tolist()
+        
+        return loss, accuracy, classAcc
+
+    def train(self,trial):
+        s = time.time()
+        for epoch in range(self.nEpochs):
+            s = time.time()
+            for X, Y in self.dataLoader.train_generator:
+                print('for Bla bla', time.time() - s)
+                X, Y = X.to('cuda:0'), Y.to('cuda:0')
+                # print(X.shape)
+                # e = time.time()
+                # print('loading a batch : ',e-et)
+                Yhat = self.model(X)
+                self.optimizer.zero_grad()
+                loss = self.criterion(Yhat, Y)
+                loss.backward()
+                self.optimizer.step()
+                # et = time.time()
+                # print('training a batch : ',et-e)
+            self.scheduler.step()
+            # print('epoch finished : ',time.time() - s)
+
+            s = time.time()
+            print('start test')
+            loss, accuracy, classAcc = self.test()
+            print('test : ',time.time() - s)
+            # s = time.time()
+            trial.report(loss,epoch)
+            # print('trial report : ',time.time() - s)
+
+            # s = time.time()
+            if trial.should_prune():
+                raise optuna.TrialPruned()
+        #     print('trial should prune test : ',time.time() - s)
+        # print('train : ',time.time() - s)
+        #log accuracy    
+        print('overall accuracy : ', accuracy.cpu().numpy().tolist())
+        print('per label accuracy : ', classAcc.cpu().numpy().tolist())
+
+        return loss , accuracy, classAcc
+
 ### TEST ###
 
 # dataProcessorOpts = {'type' : 'melSpectrogram',
